@@ -1,0 +1,2935 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DERNIER BASTION — Survie Tactique</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --hud-bg: rgba(15, 23, 42, 0.84);
+            --hud-border: rgba(148, 163, 184, 0.22);
+            --accent-amber: #f59e0b;
+            --accent-emerald: #10b981;
+            --accent-red: #ef4444;
+            --accent-cyan: #06b6d4;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #090d16;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+
+        .font-tactical {
+            font-family: 'Chakra Petch', sans-serif;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: none;
+        }
+
+        /* Grille et effets visuels des panneaux tactiques */
+        .tactical-panel {
+            background: var(--hud-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--hud-border);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.18) 50%,
+                rgba(0,0,0,0.18)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        /* Cartes d'amélioration */
+        .upgrade-card {
+            transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+        }
+
+        .upgrade-card:hover {
+            transform: translateY(-6px) scale(1.02);
+        }
+
+        .upgrade-card:active {
+            transform: translateY(-2px) scale(0.99);
+        }
+
+        .rarity-common {
+            border-color: rgba(148, 163, 184, 0.45);
+            background: linear-gradient(165deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+        }
+        .rarity-common:hover {
+            border-color: #cbd5e1;
+            box-shadow: 0 15px 35px -5px rgba(148, 163, 184, 0.28);
+        }
+
+        .rarity-rare {
+            border-color: rgba(14, 165, 233, 0.55);
+            background: linear-gradient(165deg, rgba(12, 74, 110, 0.45) 0%, rgba(15, 23, 42, 0.98) 100%);
+        }
+        .rarity-rare:hover {
+            border-color: #38bdf8;
+            box-shadow: 0 15px 35px -5px rgba(56, 189, 248, 0.35);
+        }
+
+        .rarity-epic {
+            border-color: rgba(245, 158, 11, 0.65);
+            background: linear-gradient(165deg, rgba(120, 53, 15, 0.48) 0%, rgba(15, 23, 42, 0.98) 100%);
+        }
+        .rarity-epic:hover {
+            border-color: #fbbf24;
+            box-shadow: 0 15px 35px -5px rgba(245, 158, 11, 0.42);
+        }
+
+        /* Touches clavier visuelles */
+        .keycap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2rem;
+            height: 2rem;
+            padding: 0 0.5rem;
+            background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+            border: 1px solid #475569;
+            border-bottom-width: 3px;
+            border-radius: 0.45rem;
+            font-family: 'Chakra Petch', sans-serif;
+            font-weight: 700;
+            font-size: 0.8rem;
+            color: #f1f5f9;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+
+        @keyframes pulseDanger {
+            0%, 100% { opacity: 0.95; }
+            50% { opacity: 0.5; }
+        }
+
+        .animate-threat {
+            animation: pulseDanger 1.4s infinite ease-in-out;
+        }
+
+        /* Barre de défilement personnalisée pour le récapitulatif */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="relative select-none">
+
+    <!-- Canvas Principal du Jeu -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Effet subtil de lignes de balayage tactiques -->
+    <div class="fixed inset-0 scanlines z-10 opacity-30"></div>
+
+    <!-- ===================================================================== -->
+    <!-- HUD EN JEU (Interface Tête Haute)                                     -->
+    <!-- ===================================================================== -->
+    <div id="hudContainer" class="fixed inset-0 z-20 pointer-events-none hidden flex flex-col justify-between p-3 sm:p-5">
+        
+        <!-- Rangée Supérieure -->
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            
+            <!-- Haut-Gauche : Santé, XP, Niveau & Équipements actifs -->
+            <div class="flex flex-col gap-2 w-full sm:w-80">
+                <div class="tactical-panel rounded-xl p-3">
+                    <!-- Santé -->
+                    <div class="flex items-center justify-between text-xs font-tactical uppercase tracking-wider mb-1">
+                        <span class="text-slate-300 flex items-center gap-1.5 font-semibold">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                            Intégrité Combattant
+                        </span>
+                        <span id="hudHpText" class="text-emerald-400 font-bold text-sm">100 / 100</span>
+                    </div>
+                    <div class="w-full h-3 bg-slate-900/90 rounded-full overflow-hidden border border-slate-700/70 p-0.5 mb-2.5">
+                        <div id="hudHpBar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-150" style="width: 100%"></div>
+                    </div>
+
+                    <!-- Expérience & Niveau -->
+                    <div class="flex items-center justify-between text-xs font-tactical uppercase tracking-wider mb-1">
+                        <span class="text-amber-400 font-bold flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded text-[11px]">NIV. <span id="hudLevel">1</span></span>
+                            <span>Ravitaillement</span>
+                        </span>
+                        <span id="hudXpText" class="text-slate-400 text-[11px]">0 / 100 XP</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-900/90 rounded-full overflow-hidden border border-slate-700/70">
+                        <div id="hudXpBar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 rounded-full transition-all duration-150" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Badges des améliorations acquises -->
+                <div id="hudActiveUpgrades" class="flex flex-wrap gap-1.5 max-w-xs"></div>
+            </div>
+
+            <!-- Haut-Centre : Chronomètre & Niveau de Menace -->
+            <div class="tactical-panel rounded-xl px-4 py-2.5 flex flex-col items-center mx-auto sm:mx-0">
+                <div class="flex items-center gap-3">
+                    <div class="text-center">
+                        <div class="text-[10px] font-tactical uppercase tracking-widest text-slate-400">Survie</div>
+                        <div id="hudTimer" class="font-tactical text-2xl sm:text-3xl font-bold tracking-wider text-white leading-none">00:00</div>
+                    </div>
+                    <div class="h-8 w-px bg-slate-700/80"></div>
+                    <div class="text-left">
+                        <div class="text-[10px] font-tactical uppercase tracking-widest text-slate-400">Menace Horde</div>
+                        <div id="hudThreatLabel" class="font-tactical text-xs sm:text-sm font-bold text-emerald-400 uppercase tracking-wide">FAIBLE</div>
+                        <div class="text-[11px] text-slate-400 font-mono">Actifs: <span id="hudActiveZombies" class="text-slate-200 font-semibold">0</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Haut-Droite : Éliminations & Contrôles Audio/Pause -->
+            <div class="flex items-center gap-2 ml-auto sm:ml-0">
+                <div class="tactical-panel rounded-xl px-4 py-2.5 text-right">
+                    <div class="text-[10px] font-tactical uppercase tracking-widest text-slate-400">Éliminations</div>
+                    <div id="hudKills" class="font-tactical text-2xl font-bold text-amber-400 leading-none">0</div>
+                </div>
+
+                <div class="flex flex-col gap-1.5 pointer-events-auto">
+                    <button id="btnToggleAudio" title="Activer / Couper le son" class="tactical-panel hover:bg-slate-800/90 active:scale-95 transition rounded-xl p-2.5 text-slate-200 flex items-center justify-center">
+                        <svg id="iconAudioOn" class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+                        </svg>
+                        <svg id="iconAudioOff" class="w-5 h-5 text-rose-400 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6"/>
+                        </svg>
+                    </button>
+                    <button id="btnPause" title="Pause (P / Échap)" class="tactical-panel hover:bg-slate-800/90 active:scale-95 transition rounded-xl p-2.5 text-slate-200 flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rangée Inférieure : Munitions & Roulade Tactique -->
+        <div class="flex items-end justify-between gap-4">
+            <!-- Astuce rapide discrète -->
+            <div class="hidden md:flex items-center gap-3 tactical-panel rounded-xl px-3.5 py-2 text-xs text-slate-400">
+                <span><strong class="text-slate-200">ZQSD / Flèches</strong> Bouger</span>
+                <span>•</span>
+                <span><strong class="text-slate-200">Clic</strong> Tirer</span>
+                <span>•</span>
+                <span><strong class="text-slate-200">R</strong> Recharger</span>
+                <span>•</span>
+                <span><strong class="text-slate-200">Espace</strong> Roulade</span>
+            </div>
+
+            <!-- Munitions & Dash -->
+            <div class="flex items-center gap-3 ml-auto">
+                <!-- Jauge Roulade Tactique -->
+                <div class="tactical-panel rounded-xl px-3.5 py-2.5 flex flex-col items-center min-w-[96px]">
+                    <div class="text-[10px] font-tactical uppercase tracking-widest text-slate-400 mb-1">Roulade [Espace]</div>
+                    <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-700/80">
+                        <div id="hudDashBar" class="h-full bg-cyan-400 rounded-full transition-all duration-75" style="width: 100%"></div>
+                    </div>
+                    <div id="hudDashStatus" class="font-tactical text-[11px] font-bold text-cyan-300 mt-1">PRÊTE</div>
+                </div>
+
+                <!-- Compteur Munitions -->
+                <div class="tactical-panel rounded-xl px-4 py-2.5 min-w-[140px] text-right">
+                    <div class="text-[10px] font-tactical uppercase tracking-widest text-slate-400 flex items-center justify-end gap-1.5">
+                        <span id="hudReloadBadge" class="hidden px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded text-[9px] animate-pulse">RECHARGEMENT</span>
+                        <span>Carabine M4-T</span>
+                    </div>
+                    <div class="font-tactical text-2xl font-bold text-white leading-tight">
+                        <span id="hudAmmoCurrent">30</span>
+                        <span class="text-sm text-slate-400 font-normal">/ <span id="hudAmmoMax">30</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- ÉCRAN D'ACCUEIL (« DÉPLOYER »)                                        -->
+    <!-- ===================================================================== -->
+    <div id="startScreen" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+        <div class="tactical-panel rounded-2xl max-w-2xl w-full p-6 sm:p-8 border-slate-700/80 relative overflow-hidden">
+            <!-- Bandeau décoratif supérieur -->
+            <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-400 to-cyan-500"></div>
+
+            <div class="flex items-center gap-2 text-xs font-tactical uppercase tracking-[0.25em] text-amber-400 mb-2">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                Secteur Quarantaine 09 — Alerte Rouge
+            </div>
+
+            <h1 class="font-tactical text-4xl sm:text-6xl font-bold tracking-tight text-white mb-3">
+                DERNIER <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">BASTION</span>
+            </h1>
+
+            <p class="text-slate-300 text-sm sm:text-base leading-relaxed mb-6">
+                Vous êtes le dernier opérateur déployé dans l'enceinte fortifiée. Les vagues d'infectés deviennent exponentiellement plus nombreuses à chaque seconde. Éliminez la horde, récupérez les plaques tactiques et demandez des <span class="text-amber-300 font-semibold">ravitaillements</span> pour survivre.
+            </p>
+
+            <!-- Grille des commandes -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-3 flex flex-col items-center text-center">
+                    <div class="flex gap-1 mb-2">
+                        <span class="keycap">Z</span><span class="keycap">Q</span><span class="keycap">S</span><span class="keycap">D</span>
+                    </div>
+                    <span class="text-xs font-medium text-slate-300">Déplacement</span>
+                    <span class="text-[10px] text-slate-500">ou Flèches / WASD</span>
+                </div>
+
+                <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-3 flex flex-col items-center text-center">
+                    <div class="flex gap-1 mb-2">
+                        <span class="keycap">SOURIS</span>
+                    </div>
+                    <span class="text-xs font-medium text-slate-300">Viser & Tirer</span>
+                    <span class="text-[10px] text-slate-500">Maintenir clic gauche</span>
+                </div>
+
+                <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-3 flex flex-col items-center text-center">
+                    <div class="flex gap-1 mb-2">
+                        <span class="keycap">R</span>
+                    </div>
+                    <span class="text-xs font-medium text-slate-300">Recharger</span>
+                    <span class="text-[10px] text-slate-500">Auto si chargeur vide</span>
+                </div>
+
+                <div class="bg-slate-900/75 border border-slate-800 rounded-xl p-3 flex flex-col items-center text-center">
+                    <div class="flex gap-1 mb-2">
+                        <span class="keycap">ESPACE</span>
+                    </div>
+                    <span class="text-xs font-medium text-slate-300">Roulade Tactique</span>
+                    <span class="text-[10px] text-slate-500">Esquive invincible</span>
+                </div>
+            </div>
+
+            <!-- Légende rapide des menaces -->
+            <div class="bg-slate-900/60 border border-slate-800/90 rounded-xl p-3.5 mb-7">
+                <div class="text-[11px] font-tactical uppercase tracking-widest text-slate-400 mb-2">Renseignements Hostiles</div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block shrink-0"></span>
+                        <span class="text-slate-300"><strong>Marcheur</strong> : Masse</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-orange-400 inline-block shrink-0"></span>
+                        <span class="text-slate-300"><strong>Coureur</strong> : Rapide</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3.5 h-3.5 rounded-full bg-purple-500 border border-purple-300 inline-block shrink-0"></span>
+                        <span class="text-slate-300"><strong>Colosse</strong> : Blindé</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-lime-400 shadow-[0_0_8px_#a3e635] inline-block shrink-0"></span>
+                        <span class="text-slate-300"><strong>Toxique</strong> : Explosif</span>
+                    </div>
+                </div>
+            </div>
+
+            <button id="btnDeploy" class="w-full py-4 px-6 rounded-xl font-tactical text-xl font-bold uppercase tracking-widest text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 active:scale-[0.99] transition shadow-lg shadow-amber-500/25 cursor-pointer flex items-center justify-center gap-3">
+                <span>DÉPLOYER SUR ZONE</span>
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- ÉCRAN DE RAVITAILLEMENT (MONTEE DE NIVEAU)                            -->
+    <!-- ===================================================================== -->
+    <div id="levelUpScreen" class="fixed inset-0 z-40 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="max-w-4xl w-full flex flex-col items-center">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 font-tactical text-xs uppercase tracking-widest mb-2">
+                <span>Niveau <span id="modalLevelNum">2</span> Atteint</span>
+            </div>
+            <h2 class="font-tactical text-3xl sm:text-5xl font-bold text-white tracking-wide text-center mb-1">
+                RAVITAILLEMENT TACTIQUE
+            </h2>
+            <p class="text-slate-400 text-sm mb-6 text-center">Sélectionnez un module d'armement ou de soutien pour renforcer votre position</p>
+
+            <!-- Conteneur des 3 cartes -->
+            <div id="upgradeCardsContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-6">
+                <!-- Généré dynamiquement en JS -->
+            </div>
+
+            <!-- Bouton de relance -->
+            <button id="btnReroll" class="tactical-panel hover:bg-slate-800/95 active:scale-95 transition px-5 py-2.5 rounded-xl font-tactical text-sm font-bold uppercase tracking-wider text-cyan-300 border-cyan-500/40 flex items-center gap-2 cursor-pointer">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span>Relancer le largage (<span id="rerollCountText">1</span> restant)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- ÉCRAN DE PAUSE                                                        -->
+    <!-- ===================================================================== -->
+    <div id="pauseScreen" class="fixed inset-0 z-40 hidden flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+        <div class="tactical-panel rounded-2xl max-w-md w-full p-6 text-center">
+            <h2 class="font-tactical text-3xl font-bold text-white mb-2">OPÉRATION EN PAUSE</h2>
+            <p class="text-slate-400 text-sm mb-6">Prenez votre souffle, commandant. La horde attend dehors.</p>
+            <div class="flex flex-col gap-3">
+                <button id="btnResume" class="w-full py-3 rounded-xl font-tactical font-bold uppercase tracking-wider bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition cursor-pointer">
+                    Reprendre le combat
+                </button>
+                <button id="btnRestartFromPause" class="w-full py-3 rounded-xl font-tactical font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition cursor-pointer">
+                    Abandonner & Recommencer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- ÉCRAN DE FIN DE PARTIE (« RAPPORT DE MISSION »)                       -->
+    <!-- ===================================================================== -->
+    <div id="gameOverScreen" class="fixed inset-0 z-40 hidden flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+        <div class="tactical-panel rounded-2xl max-w-2xl w-full p-6 sm:p-8 border-rose-500/40 relative overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-600 via-amber-500 to-rose-600"></div>
+
+            <div class="text-xs font-tactical uppercase tracking-[0.25em] text-rose-400 mb-1">Signal Perdu — Opérateur Submergé</div>
+            <h2 class="font-tactical text-3xl sm:text-5xl font-bold text-white mb-6">RAPPORT DE MISSION</h2>
+
+            <!-- Statistiques Principales -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <div class="text-[11px] font-tactical uppercase text-slate-400 mb-1">Temps Survécu</div>
+                    <div id="statTime" class="font-tactical text-2xl font-bold text-white">00:00</div>
+                </div>
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <div class="text-[11px] font-tactical uppercase text-slate-400 mb-1">Éliminations</div>
+                    <div id="statKills" class="font-tactical text-2xl font-bold text-amber-400">0</div>
+                </div>
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <div class="text-[11px] font-tactical uppercase text-slate-400 mb-1">Niveau Atteint</div>
+                    <div id="statLevel" class="font-tactical text-2xl font-bold text-cyan-400">1</div>
+                </div>
+                <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 text-center">
+                    <div class="text-[11px] font-tactical uppercase text-slate-400 mb-1">Dégâts Infligés</div>
+                    <div id="statDamage" class="font-tactical text-2xl font-bold text-emerald-400">0</div>
+                </div>
+            </div>
+
+            <!-- Liste des améliorations choisies -->
+            <div class="mb-7">
+                <div class="text-xs font-tactical uppercase tracking-wider text-slate-400 mb-2">Arsenal & Améliorations Déployés</div>
+                <div id="statUpgradesList" class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 max-h-36 overflow-y-auto flex flex-wrap gap-2">
+                    <!-- Rempli en JS -->
+                </div>
+            </div>
+
+            <button id="btnReplay" class="w-full py-4 px-6 rounded-xl font-tactical text-xl font-bold uppercase tracking-widest text-slate-950 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 active:scale-[0.99] transition shadow-lg shadow-amber-500/25 cursor-pointer flex items-center justify-center gap-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span>REJOUER UNE MISSION</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MOTEUR DE JEU & LOGIQUE COMPLÈTE                                      -->
+    <!-- ===================================================================== -->
+    <script>
+    (() => {
+        'use strict';
+
+        // =====================================================================
+        // 1. SYSTÈME AUDIO PROCÉDURAL (WEB AUDIO API)
+        // =====================================================================
+        class TacticalAudio {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.noiseBuffer = null;
+                this.xpCombo = 0;
+                this.lastXpTime = 0;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) {
+                        this.ctx = new AudioContext();
+                        this.createNoiseBuffer();
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            createNoiseBuffer() {
+                const bufferSize = this.ctx.sampleRate * 1.5;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                this.noiseBuffer = buffer;
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            playShoot(isTurret = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // Bruit filtré claquant (détonation)
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.noiseBuffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                const pitchShift = 0.92 + Math.random() * 0.16;
+                filter.frequency.setValueAtTime((isTurret ? 1400 : 1050) * pitchShift, now);
+                filter.Q.value = 1.2;
+
+                const noiseGain = this.ctx.createGain();
+                const vol = isTurret ? 0.08 : 0.16;
+                noiseGain.gain.setValueAtTime(vol, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + 0.09);
+
+                // Impact grave (kick du canon)
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime((isTurret ? 220 : 175) * pitchShift, now);
+                osc.frequency.exponentialRampToValueAtTime(42, now + 0.07);
+
+                oscGain.gain.setValueAtTime(isTurret ? 0.09 : 0.2, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            }
+
+            playReload() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // Double clic mécanique de culasse
+                [0, 0.14].forEach((offset, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(idx === 0 ? 520 : 780, now + offset);
+                    osc.frequency.exponentialRampToValueAtTime(idx === 0 ? 280 : 1100, now + offset + 0.045);
+
+                    gain.gain.setValueAtTime(0.08, now + offset);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.05);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + offset);
+                    osc.stop(now + offset + 0.055);
+                });
+            }
+
+            playHit() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(140 + Math.random() * 40, now);
+                osc.frequency.exponentialRampToValueAtTime(55, now + 0.045);
+
+                gain.gain.setValueAtTime(0.09, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.055);
+            }
+
+            playExplosion(isToxic = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // Souffle grave de bruit blanc
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.noiseBuffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(isToxic ? 650 : 520, now);
+                filter.frequency.exponentialRampToValueAtTime(75, now + 0.45);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.28, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + 0.5);
+
+                // Onde sub-bass
+                const sub = this.ctx.createOscillator();
+                const subGain = this.ctx.createGain();
+                sub.type = 'sine';
+                sub.frequency.setValueAtTime(110, now);
+                sub.frequency.exponentialRampToValueAtTime(28, now + 0.38);
+
+                subGain.gain.setValueAtTime(0.26, now);
+                subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+                sub.connect(subGain);
+                subGain.connect(this.ctx.destination);
+                sub.start(now);
+                sub.stop(now + 0.42);
+            }
+
+            playXp() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                if (now - this.lastXpTime < 0.25) {
+                    this.xpCombo = Math.min(this.xpCombo + 1, 14);
+                } else {
+                    this.xpCombo = 0;
+                }
+                this.lastXpTime = now;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                const baseFreq = 580 + this.xpCombo * 38;
+                osc.frequency.setValueAtTime(baseFreq, now);
+                osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, now + 0.07);
+
+                gain.gain.setValueAtTime(0.06, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.085);
+            }
+
+            playDash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = this.noiseBuffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(300, now);
+                filter.frequency.exponentialRampToValueAtTime(950, now + 0.12);
+                filter.Q.value = 1.5;
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+                noise.stop(now + 0.17);
+            }
+
+            playLevelUp() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [440, 554.37, 659.25, 880]; // Accord majeur ascendant
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    const start = now + idx * 0.065;
+                    osc.frequency.setValueAtTime(freq, start);
+
+                    gain.gain.setValueAtTime(0.13, start);
+                    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(start);
+                    osc.stop(start + 0.36);
+                });
+            }
+
+            playPlayerHurt() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(140, now);
+                osc.frequency.exponentialRampToValueAtTime(48, now + 0.18);
+
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.21);
+            }
+        }
+
+        const audio = new TacticalAudio();
+
+        // =====================================================================
+        // 2. CONFIGURATION & CATALOGUE DES AMÉLIORATIONS
+        // =====================================================================
+        const WORLD_SIZE = 2400;
+        const GRID_CELL_SIZE = 72;
+
+        const UPGRADE_POOL = [
+            {
+                id: 'piercing',
+                name: 'Balles Perforantes',
+                rarity: 'rare',
+                rarityLabel: 'RARE',
+                maxLevel: 6,
+                icon: '🎯',
+                desc: (lvl) => `Les projectiles traversent <strong>+${lvl + 1}</strong> ennemis supplémentaires. Dévastateur contre les foules compactes.`
+            },
+            {
+                id: 'multishot',
+                name: 'Tir en Éventail',
+                rarity: 'epic',
+                rarityLabel: 'ÉPIQUE',
+                maxLevel: 5,
+                icon: '🔱',
+                desc: (lvl) => `Ajoute <strong>+1 projectile</strong> supplémentaire par tir avec dispersion tactique contrôlée.`
+            },
+            {
+                id: 'explosive',
+                name: 'Munitions Explosives',
+                rarity: 'epic',
+                rarityLabel: 'ÉPIQUE',
+                maxLevel: 5,
+                icon: '💥',
+                desc: (lvl) => `Ogives à fragmentation déclenchant une explosion de zone à l'impact (Rayon & Dégâts Niv. ${lvl + 1}).`
+            },
+            {
+                id: 'firerate',
+                name: 'Cadence de Tir Accrue',
+                rarity: 'common',
+                rarityLabel: 'COMMUN',
+                maxLevel: 8,
+                icon: '⚡',
+                desc: () => `Mécanisme de culasse allégé : augmente la vitesse de tir de <strong>+22%</strong>.`
+            },
+            {
+                id: 'magazine',
+                name: 'Chargeur Étendu & Reload',
+                rarity: 'common',
+                rarityLabel: 'COMMUN',
+                maxLevel: 6,
+                icon: '🔋',
+                desc: () => `Capacité du chargeur <strong>+35%</strong> et vitesse de rechargement améliorée de <strong>+30%</strong>.`
+            },
+            {
+                id: 'turret',
+                name: 'Tourelle Automatique',
+                rarity: 'epic',
+                rarityLabel: 'ÉPIQUE',
+                maxLevel: 5,
+                icon: '🗼',
+                desc: (lvl) => lvl === 0
+                    ? `Déploie une <strong>tourelle sentinelle</strong> autonome à votre position qui abat les cibles proches.`
+                    : `Déploie une tourelle supplémentaire (max 4) et augmente la cadence de toutes vos tourelles de <strong>+25%</strong>.`
+            },
+            {
+                id: 'drones',
+                name: 'Drones Orbitaux',
+                rarity: 'rare',
+                rarityLabel: 'RARE',
+                maxLevel: 5,
+                icon: '🛸',
+                desc: (lvl) => lvl === 0
+                    ? `Déploie un <strong>drone lame plasma</strong> en orbite qui découpe et électrocute les zombies au contact.`
+                    : `Ajoute <strong>+1 drone orbital</strong> supplémentaire et augmente leur vitesse de rotation.`
+            },
+            {
+                id: 'grenade',
+                name: 'Grenade Automatique',
+                rarity: 'rare',
+                rarityLabel: 'RARE',
+                maxLevel: 5,
+                icon: '💣',
+                desc: (lvl) => lvl === 0
+                    ? `Lance automatiquement une <strong>grenade à fragmentation</strong> toutes les 4.5s sur le groupe le plus dense.`
+                    : `Réduit le délai de lancement des grenades et augmente les dégâts de zone de <strong>+30%</strong>.`
+            },
+            {
+                id: 'mobility',
+                name: 'Bottes & Roulade Éclair',
+                rarity: 'common',
+                rarityLabel: 'COMMUN',
+                maxLevel: 5,
+                icon: '🥾',
+                desc: () => `Vitesse de déplacement <strong>+14%</strong>, récupération de roulade <strong>-25%</strong> et onde de choc à l'esquive.`
+            },
+            {
+                id: 'armor',
+                name: 'Kit Médical & Blindage',
+                rarity: 'common',
+                rarityLabel: 'COMMUN',
+                maxLevel: 8,
+                icon: '🛡️',
+                desc: () => `Soigne immédiatement <strong>45% des PV max</strong>, ajoute <strong>+25 PV max</strong> et renforce la régénération.`
+            },
+            {
+                id: 'damage',
+                name: 'Calibre Lourd & Aimant',
+                rarity: 'rare',
+                rarityLabel: 'RARE',
+                maxLevel: 6,
+                icon: '🧲',
+                desc: () => `Augmente les dégâts de toutes vos armes de <strong>+24%</strong> et le rayon d'attraction d'XP de <strong>+40%</strong>.`
+            }
+        ];
+
+        // =====================================================================
+        // 3. INITIALISATION CANVAS & CALQUE DE DÉCALS PERSISTANTS
+        // =====================================================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Canvas hors-écran pour les taches au sol (sang de zombie, cratères, douilles)
+        // Permet d'afficher des milliers de traces sans aucun impact sur les FPS !
+        const decalCanvas = document.createElement('canvas');
+        decalCanvas.width = WORLD_SIZE;
+        decalCanvas.height = WORLD_SIZE;
+        const decalCtx = decalCanvas.getContext('2d');
+
+        let viewWidth = window.innerWidth;
+        let viewHeight = window.innerHeight;
+
+        function resizeCanvas() {
+            viewWidth = window.innerWidth;
+            viewHeight = window.innerHeight;
+            canvas.width = viewWidth;
+            canvas.height = viewHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // =====================================================================
+        // 4. ÉTAT GLOBAL DU JEU & ENTRÉES UTILISATEUR
+        // =====================================================================
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'LEVELUP', 'PAUSED', 'GAMEOVER'
+        let lastFrameTime = 0;
+        let elapsedTime = 0;
+        let totalKills = 0;
+        let totalDamageDealt = 0;
+        let pendingLevelUps = 0;
+        let rerollsLeft = 1;
+        let decalFadeTimer = 0;
+
+        // Caméra
+        const camera = {
+            x: WORLD_SIZE / 2,
+            y: WORLD_SIZE / 2,
+            shake: 0
+        };
+
+        // Entrées clavier & souris
+        const keys = {};
+        const mouse = {
+            screenX: viewWidth / 2,
+            screenY: viewHeight / 2,
+            worldX: WORLD_SIZE / 2,
+            worldY: WORLD_SIZE / 2,
+            down: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            const code = e.code;
+            const k = e.key.toLowerCase();
+
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
+                e.preventDefault();
+            }
+
+            keys[code] = true;
+            keys['key_' + k] = true;
+
+            if (gameState === 'PLAYING') {
+                if (code === 'KeyR' || k === 'r') {
+                    triggerReload();
+                }
+                if (code === 'Space') {
+                    triggerDash();
+                }
+                if (code === 'KeyP' || code === 'Escape' || k === 'p') {
+                    setPause(true);
+                }
+            } else if (gameState === 'PAUSED') {
+                if (code === 'KeyP' || code === 'Escape' || k === 'p') {
+                    setPause(false);
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+            keys['key_' + e.key.toLowerCase()] = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.screenX = e.clientX;
+            mouse.screenY = e.clientY;
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                mouse.down = true;
+                audio.init();
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                mouse.down = false;
+            }
+        });
+
+        // Support tactile basique si testé sur appareil mobile/tablette
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                audio.init();
+                mouse.screenX = e.touches[0].clientX;
+                mouse.screenY = e.touches[0].clientY;
+                mouse.down = true;
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                mouse.screenX = e.touches[0].clientX;
+                mouse.screenY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.down = false;
+        });
+
+        // =====================================================================
+        // 5. ENTITÉS DU JEU (JOUEUR, OBSTACLES, ZOMBIES, PROJECTILES...)
+        // =====================================================================
+        let player = {};
+        let obstacles = [];
+        let zombies = [];
+        let bullets = [];
+        let grenades = [];
+        let turrets = [];
+        let xpOrbs = [];
+        let particles = [];
+        let casings = [];
+        let floatingTexts = [];
+        let shockwaves = [];
+        let dashGhosts = [];
+        let spawnTimer = 0;
+
+        // Grille spatiale pour optimiser les collisions (O(N))
+        const spatialGrid = new Map();
+
+        function getCellKey(cx, cy) {
+            return (cx << 16) ^ cy;
+        }
+
+        function rebuildSpatialGrid() {
+            spatialGrid.clear();
+            for (let i = 0; i < zombies.length; i++) {
+                const z = zombies[i];
+                const cx = Math.floor(z.x / GRID_CELL_SIZE);
+                const cy = Math.floor(z.y / GRID_CELL_SIZE);
+                const key = getCellKey(cx, cy);
+                let bucket = spatialGrid.get(key);
+                if (!bucket) {
+                    bucket = [];
+                    spatialGrid.set(key, bucket);
+                }
+                bucket.push(z);
+            }
+        }
+
+        function queryNearbyZombies(x, y, radius) {
+            const results = [];
+            const minCx = Math.floor((x - radius) / GRID_CELL_SIZE);
+            const maxCx = Math.floor((x + radius) / GRID_CELL_SIZE);
+            const minCy = Math.floor((y - radius) / GRID_CELL_SIZE);
+            const maxCy = Math.floor((y + radius) / GRID_CELL_SIZE);
+
+            for (let cx = minCx; cx <= maxCx; cx++) {
+                for (let cy = minCy; cy <= maxCy; cy++) {
+                    const bucket = spatialGrid.get(getCellKey(cx, cy));
+                    if (bucket) {
+                        for (let i = 0; i < bucket.length; i++) {
+                            results.push(bucket[i]);
+                        }
+                    }
+                }
+            }
+            return results;
+        }
+
+        // Génération de la base militaire / zone urbaine
+        function generateArena() {
+            obstacles = [];
+            const center = WORLD_SIZE / 2;
+
+            // 4 bunkers de sacs de sable autour du point d'extraction central (les balles passent au-dessus !)
+            const bunkerDist = 290;
+            obstacles.push({ x: center - 85, y: center - bunkerDist, w: 170, h: 28, type: 'sandbag' });
+            obstacles.push({ x: center - 85, y: center + bunkerDist - 28, w: 170, h: 28, type: 'sandbag' });
+            obstacles.push({ x: center - bunkerDist, y: center - 85, w: 28, h: 170, type: 'sandbag' });
+            obstacles.push({ x: center + bunkerDist - 28, y: center - 85, w: 28, h: 170, type: 'sandbag' });
+
+            // Blocs de béton armé symétriques et stratégiques dans le périmètre
+            const concretePositions = [
+                { x: 560, y: 560, w: 110, h: 110 },
+                { x: WORLD_SIZE - 670, y: 560, w: 110, h: 110 },
+                { x: 560, y: WORLD_SIZE - 670, w: 110, h: 110 },
+                { x: WORLD_SIZE - 670, y: WORLD_SIZE - 670, w: 110, h: 110 },
+
+                { x: center - 520, y: center - 40, w: 65, h: 80 },
+                { x: center + 455, y: center - 40, w: 65, h: 80 },
+                { x: center - 40, y: center - 520, w: 80, h: 65 },
+                { x: center - 40, y: center + 455, w: 80, h: 65 },
+
+                // Sacs de sable extérieurs supplémentaires
+                { x: 420, y: center - 240, w: 30, h: 140, type: 'sandbag' },
+                { x: WORLD_SIZE - 450, y: center + 100, w: 30, h: 140, type: 'sandbag' },
+                { x: center + 100, y: 420, w: 140, h: 30, type: 'sandbag' },
+                { x: center - 240, y: WORLD_SIZE - 450, w: 140, h: 30, type: 'sandbag' }
+            ];
+
+            concretePositions.forEach(obs => {
+                obstacles.push({
+                    x: obs.x,
+                    y: obs.y,
+                    w: obs.w,
+                    h: obs.h,
+                    type: obs.type || 'concrete'
+                });
+            });
+
+            // Peindre le sol texturé sur le decalCanvas au démarrage
+            paintArenaFloor();
+        }
+
+        function paintArenaFloor() {
+            decalCtx.fillStyle = '#111827';
+            decalCtx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+            // Dalles d'asphalte subtiles
+            decalCtx.strokeStyle = 'rgba(30, 41, 59, 0.75)';
+            decalCtx.lineWidth = 2;
+            const tile = 120;
+            for (let x = 0; x <= WORLD_SIZE; x += tile) {
+                decalCtx.beginPath();
+                decalCtx.moveTo(x, 0);
+                decalCtx.lineTo(x, WORLD_SIZE);
+                decalCtx.stroke();
+            }
+            for (let y = 0; y <= WORLD_SIZE; y += tile) {
+                decalCtx.beginPath();
+                decalCtx.moveTo(0, y);
+                decalCtx.lineTo(WORLD_SIZE, y);
+                decalCtx.stroke();
+            }
+
+            // Marquages tactiques au centre (Zone d'héliport / Bastion)
+            const c = WORLD_SIZE / 2;
+            decalCtx.save();
+            decalCtx.strokeStyle = 'rgba(245, 158, 11, 0.22)';
+            decalCtx.lineWidth = 6;
+            decalCtx.beginPath();
+            decalCtx.arc(c, c, 175, 0, Math.PI * 2);
+            decalCtx.stroke();
+
+            decalCtx.setLineDash([22, 16]);
+            decalCtx.lineWidth = 3;
+            decalCtx.beginPath();
+            decalCtx.arc(c, c, 210, 0, Math.PI * 2);
+            decalCtx.stroke();
+            decalCtx.setLineDash([]);
+
+            // Lettre "H" tactique centrale
+            decalCtx.fillStyle = 'rgba(245, 158, 11, 0.12)';
+            decalCtx.font = 'bold 120px "Chakra Petch", sans-serif';
+            decalCtx.textAlign = 'center';
+            decalCtx.textBaseline = 'middle';
+            decalCtx.fillText('H', c, c + 6);
+            decalCtx.restore();
+
+            // Rayures de danger le long des murs d'enceinte
+            decalCtx.strokeStyle = 'rgba(239, 68, 68, 0.28)';
+            decalCtx.lineWidth = 4;
+            decalCtx.strokeRect(48, 48, WORLD_SIZE - 96, WORLD_SIZE - 96);
+        }
+
+        function resetGame() {
+            elapsedTime = 0;
+            totalKills = 0;
+            totalDamageDealt = 0;
+            pendingLevelUps = 0;
+            rerollsLeft = 1;
+            spawnTimer = 0.5;
+
+            zombies = [];
+            bullets = [];
+            grenades = [];
+            turrets = [];
+            xpOrbs = [];
+            particles = [];
+            casings = [];
+            floatingTexts = [];
+            shockwaves = [];
+            dashGhosts = [];
+
+            player = {
+                x: WORLD_SIZE / 2,
+                y: WORLD_SIZE / 2,
+                radius: 16,
+                angle: 0,
+                speed: 235,
+                hp: 100,
+                maxHp: 100,
+                hpRegen: 0.4, // légère récupération de base
+                xp: 0,
+                xpToNext: 90,
+                level: 1,
+                // Armement
+                ammo: 30,
+                maxAmmo: 30,
+                reloading: false,
+                reloadTimer: 0,
+                reloadDuration: 1.25,
+                fireCooldown: 0,
+                fireInterval: 0.145, // ~6.9 tirs/sec
+                bulletDamage: 24,
+                bulletSpeed: 980,
+                pierce: 0,
+                multishot: 1,
+                explosiveLevel: 0,
+                muzzleFlash: 0,
+                recoilOffset: 0,
+                // Roulade tactique
+                dashCooldown: 0,
+                dashMaxCooldown: 2.2,
+                dashActiveTimer: 0,
+                dashDirX: 0,
+                dashDirY: 0,
+                invulnTimer: 0,
+                // Gadgets & Compétences
+                pickupRadius: 115,
+                droneCount: 0,
+                droneAngle: 0,
+                grenadeLevel: 0,
+                grenadeTimer: 2.5,
+                walkAnim: 0,
+                upgrades: {} // id -> level
+            };
+
+            camera.x = player.x;
+            camera.y = player.y;
+            camera.shake = 0;
+
+            generateArena();
+
+            // Faire apparaître une petite escouade initiale autour de la zone pour de l'action immédiate
+            for (let i = 0; i < 12; i++) {
+                spawnZombie('walker');
+            }
+
+            updateHud();
+        }
+
+        // =====================================================================
+        // 6. MÉCANIQUES DE TIR, RECHARGEMENT & ROULADE
+        // =====================================================================
+        function triggerReload() {
+            if (player.reloading || player.ammo >= player.maxAmmo) return;
+            player.reloading = true;
+            player.reloadTimer = player.reloadDuration;
+            audio.playReload();
+        }
+
+        function triggerDash() {
+            if (player.dashCooldown > 0 || player.dashActiveTimer > 0) return;
+
+            // Direction du mouvement actuel ou direction de visée
+            let dx = 0, dy = 0;
+            if (keys['KeyW'] || keys['ArrowUp'] || keys['key_z'] || keys['key_w']) dy -= 1;
+            if (keys['KeyS'] || keys['ArrowDown'] || keys['key_s']) dy += 1;
+            if (keys['KeyA'] || keys['ArrowLeft'] || keys['key_q'] || keys['key_a']) dx -= 1;
+            if (keys['KeyD'] || keys['ArrowRight'] || keys['key_d']) dx += 1;
+
+            if (dx === 0 && dy === 0) {
+                dx = Math.cos(player.angle);
+                dy = Math.sin(player.angle);
+            } else {
+                const len = Math.hypot(dx, dy);
+                dx /= len;
+                dy /= len;
+            }
+
+            player.dashDirX = dx;
+            player.dashDirY = dy;
+            player.dashActiveTimer = 0.22;
+            player.invulnTimer = 0.34;
+            player.dashCooldown = player.dashMaxCooldown;
+
+            audio.playDash();
+
+            // Onde de choc si amélioration mobilité acquise
+            const mobLvl = player.upgrades['mobility'] || 0;
+            if (mobLvl > 0) {
+                shockwaves.push({
+                    x: player.x,
+                    y: player.y,
+                    radius: 10,
+                    maxRadius: 95 + mobLvl * 15,
+                    alpha: 0.75,
+                    color: '#22d3ee'
+                });
+                // Repousse les zombies tout proches
+                const near = queryNearbyZombies(player.x, player.y, 110);
+                for (const z of near) {
+                    const ang = Math.atan2(z.y - player.y, z.x - player.x);
+                    z.vx += Math.cos(ang) * 380;
+                    z.vy += Math.sin(ang) * 380;
+                }
+            }
+        }
+
+        function fireWeapon() {
+            if (player.reloading || player.fireCooldown > 0) return;
+            if (player.ammo <= 0) {
+                triggerReload();
+                return;
+            }
+
+            player.ammo--;
+            player.fireCooldown = player.fireInterval;
+            player.muzzleFlash = 0.045;
+            player.recoilOffset = 5.5;
+            camera.shake = Math.min(camera.shake + 2.4, 9);
+
+            audio.playShoot(false);
+
+            const barrelDist = 26;
+            const muzzleX = player.x + Math.cos(player.angle) * barrelDist;
+            const muzzleY = player.y + Math.sin(player.angle) * barrelDist;
+
+            // Calcul des projectiles (Tir en éventail)
+            const count = player.multishot;
+            const spreadStep = 0.085; // ~4.8 degrés par projectile supplémentaire
+            const startAngle = player.angle - ((count - 1) * spreadStep) / 2;
+
+            for (let i = 0; i < count; i++) {
+                const jitter = (Math.random() - 0.5) * 0.035;
+                const shotAngle = startAngle + i * spreadStep + jitter;
+                bullets.push({
+                    x: muzzleX,
+                    y: muzzleY,
+                    prevX: muzzleX,
+                    prevY: muzzleY,
+                    vx: Math.cos(shotAngle) * player.bulletSpeed,
+                    vy: Math.sin(shotAngle) * player.bulletSpeed,
+                    damage: player.bulletDamage,
+                    pierceLeft: player.pierce,
+                    explosiveLevel: player.explosiveLevel,
+                    hitIds: new Set(),
+                    life: 1.1,
+                    isTurret: false
+                });
+            }
+
+            // Éjection de douille en laiton
+            const ejectAngle = player.angle + Math.PI * 0.55 + (Math.random() - 0.5) * 0.4;
+            const ejectSpeed = 85 + Math.random() * 65;
+            casings.push({
+                x: player.x + Math.cos(player.angle) * 10,
+                y: player.y + Math.sin(player.angle) * 10,
+                vx: Math.cos(ejectAngle) * ejectSpeed,
+                vy: Math.sin(ejectAngle) * ejectSpeed,
+                z: 10,
+                vz: 90 + Math.random() * 40,
+                rot: Math.random() * Math.PI * 2,
+                vrot: (Math.random() - 0.5) * 24,
+                life: 2.2
+            });
+
+            // Rechargement automatique dès que le chargeur atteint 0
+            if (player.ammo <= 0) {
+                triggerReload();
+            }
+        }
+
+        // =====================================================================
+        // 7. APPARITION & IA DES ZOMBIES (HORDE EXPONENTIELLE)
+        // =====================================================================
+        function getThreatInfo(timeSec, kills) {
+            const score = timeSec * 1.15 + kills * 0.35;
+            if (score < 45) return { label: 'FAIBLE', color: 'text-emerald-400', danger: false };
+            if (score < 110) return { label: 'MODÉRÉE', color: 'text-amber-300', danger: false };
+            if (score < 210) return { label: 'ÉLEVÉE', color: 'text-orange-400', danger: false };
+            if (score < 360) return { label: 'CRITIQUE', color: 'text-rose-400', danger: true };
+            return { label: 'APOCALYPSE', color: 'text-fuchsia-400', danger: true };
+        }
+
+        function spawnZombie(forcedType = null) {
+            if (zombies.length >= 280) return; // Plafond de sécurité pour fluidité absolue
+
+            // Choisir un point d'apparition hors champ de la caméra (ou aux abords de l'arène)
+            let sx, sy;
+            const spawnAngle = Math.random() * Math.PI * 2;
+            const distFromPlayer = 680 + Math.random() * 240;
+            sx = player.x + Math.cos(spawnAngle) * distFromPlayer;
+            sy = player.y + Math.sin(spawnAngle) * distFromPlayer;
+
+            // Ramener à l'intérieur des murs d'enceinte
+            const margin = 65;
+            sx = Math.max(margin, Math.min(WORLD_SIZE - margin, sx));
+            sy = Math.max(margin, Math.min(WORLD_SIZE - margin, sy));
+
+            // Éviter d'apparaître juste sur le joueur si le joueur est collé au mur
+            if (Math.hypot(sx - player.x, sy - player.y) < 380) {
+                sx = sx < WORLD_SIZE / 2 ? WORLD_SIZE - 80 : 80;
+            }
+
+            // Sélection de l'archétype selon l'avancement
+            let type = forcedType;
+            if (!type) {
+                const r = Math.random();
+                if (elapsedTime > 45 && r < 0.11) {
+                    type = 'brute';
+                } else if (elapsedTime > 25 && r < 0.25) {
+                    type = 'toxic';
+                } else if (elapsedTime > 10 && r < 0.48) {
+                    type = 'runner';
+                } else {
+                    type = 'walker';
+                }
+            }
+
+            // Multiplicateur progressif de résistance avec le temps
+            const hpScale = 1 + (elapsedTime / 75) * 0.55 + (totalKills / 350) * 0.35;
+            const speedScale = 1 + Math.min(elapsedTime / 300, 0.35);
+
+            const configs = {
+                walker: {
+                    radius: 15,
+                    hp: 42 * hpScale,
+                    speed: (88 + Math.random() * 22) * speedScale,
+                    damage: 14,
+                    xp: 12,
+                    color: '#16a34a',
+                    headColor: '#4ade80'
+                },
+                runner: {
+                    radius: 12,
+                    hp: 26 * hpScale,
+                    speed: (158 + Math.random() * 28) * speedScale,
+                    damage: 11,
+                    xp: 16,
+                    color: '#ea580c',
+                    headColor: '#fbbf24'
+                },
+                brute: {
+                    radius: 26,
+                    hp: 240 * hpScale,
+                    speed: (58 + Math.random() * 12) * speedScale,
+                    damage: 28,
+                    xp: 55,
+                    color: '#581c87',
+                    headColor: '#c084fc'
+                },
+                toxic: {
+                    radius: 17,
+                    hp: 54 * hpScale,
+                    speed: (96 + Math.random() * 18) * speedScale,
+                    damage: 15,
+                    xp: 24,
+                    color: '#4d7c0f',
+                    headColor: '#bef264'
+                }
+            };
+
+            const cfg = configs[type];
+            zombies.push({
+                id: Math.random(),
+                type,
+                x: sx,
+                y: sy,
+                vx: 0,
+                vy: 0,
+                radius: cfg.radius,
+                hp: cfg.hp,
+                maxHp: cfg.hp,
+                speed: cfg.speed,
+                damage: cfg.damage,
+                xp: cfg.xp,
+                color: cfg.color,
+                headColor: cfg.headColor,
+                hitFlash: 0,
+                attackCooldown: 0,
+                animPhase: Math.random() * Math.PI * 2
+            });
+        }
+
+        // =====================================================================
+        // 8. EXPLOSIONS, DÉGÂTS & SYSTÈME D'XP / RAVITAILLEMENT
+        // =====================================================================
+        function triggerExplosion(x, y, radius, damage, isToxic = false) {
+            audio.playExplosion(isToxic);
+            camera.shake = Math.min(camera.shake + (isToxic ? 7 : 6), 14);
+
+            shockwaves.push({
+                x, y,
+                radius: 8,
+                maxRadius: radius,
+                alpha: 0.9,
+                color: isToxic ? '#a3e635' : '#f97316'
+            });
+
+            // Cratère / tache d'acide au sol
+            decalCtx.save();
+            decalCtx.fillStyle = isToxic ? 'rgba(132, 204, 22, 0.22)' : 'rgba(15, 23, 42, 0.45)';
+            decalCtx.beginPath();
+            decalCtx.arc(x, y, radius * 0.65, 0, Math.PI * 2);
+            decalCtx.fill();
+            decalCtx.restore();
+
+            // Particules d'explosion
+            const count = isToxic ? 24 : 20;
+            for (let i = 0; i < count; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const spd = 80 + Math.random() * 240;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(a) * spd,
+                    vy: Math.sin(a) * spd,
+                    size: 3 + Math.random() * 5,
+                    color: isToxic
+                        ? (Math.random() > 0.4 ? '#bef264' : '#4d7c0f')
+                        : (Math.random() > 0.35 ? '#fb923c' : '#fef08a'),
+                    life: 0.35 + Math.random() * 0.3,
+                    maxLife: 0.65
+                });
+            }
+
+            // Dégâts aux zombies dans le rayon
+            const affected = queryNearbyZombies(x, y, radius + 30);
+            for (const z of affected) {
+                const dist = Math.hypot(z.x - x, z.y - y);
+                if (dist <= radius + z.radius) {
+                    const falloff = 1 - (dist / (radius + z.radius)) * 0.45;
+                    const dmg = Math.round(damage * falloff);
+                    const ang = Math.atan2(z.y - y, z.x - x);
+                    const knock = z.type === 'brute' ? 140 : 340;
+                    z.vx += Math.cos(ang) * knock;
+                    z.vy += Math.sin(ang) * knock;
+                    damageZombie(z, dmg, isToxic ? '#bef264' : '#fb923c');
+                }
+            }
+
+            // Si explosion toxique très proche du joueur, légère alerte / dégâts réduits
+            if (isToxic && player.invulnTimer <= 0) {
+                const pDist = Math.hypot(player.x - x, player.y - y);
+                if (pDist < radius * 0.68) {
+                    damagePlayer(10);
+                }
+            }
+        }
+
+        function damageZombie(z, amount, textColor = '#ffffff') {
+            if (z.hp <= 0) return;
+            z.hp -= amount;
+            z.hitFlash = 0.08;
+            totalDamageDealt += amount;
+
+            floatingTexts.push({
+                x: z.x + (Math.random() - 0.5) * 14,
+                y: z.y - z.radius - 4,
+                vy: -55 - Math.random() * 25,
+                text: Math.round(amount).toString(),
+                color: textColor,
+                life: 0.55,
+                maxLife: 0.55
+            });
+
+            if (z.hp <= 0) {
+                killZombie(z);
+            }
+        }
+
+        function killZombie(z) {
+            totalKills++;
+
+            // Tache permanente au sol (sang vert sombre / violet pour colosse)
+            decalCtx.save();
+            decalCtx.fillStyle = z.type === 'brute'
+                ? 'rgba(88, 28, 135, 0.35)'
+                : (z.type === 'toxic' ? 'rgba(101, 163, 13, 0.42)' : 'rgba(20, 83, 45, 0.38)');
+            const splats = z.type === 'brute' ? 5 : 3;
+            for (let i = 0; i < splats; i++) {
+                const ox = (Math.random() - 0.5) * z.radius * 1.4;
+                const oy = (Math.random() - 0.5) * z.radius * 1.4;
+                const r = (4 + Math.random() * 8) * (z.type === 'brute' ? 1.5 : 1);
+                decalCtx.beginPath();
+                decalCtx.arc(z.x + ox, z.y + oy, r, 0, Math.PI * 2);
+                decalCtx.fill();
+            }
+            decalCtx.restore();
+
+            // Éclaboussures de particules
+            for (let i = 0; i < 9; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const spd = 50 + Math.random() * 140;
+                particles.push({
+                    x: z.x,
+                    y: z.y,
+                    vx: Math.cos(a) * spd,
+                    vy: Math.sin(a) * spd,
+                    size: 2.5 + Math.random() * 3.5,
+                    color: z.headColor,
+                    life: 0.25 + Math.random() * 0.25,
+                    maxLife: 0.5
+                });
+            }
+
+            // Explosion en chaîne si zombie Toxique !
+            if (z.type === 'toxic') {
+                floatingTexts.push({
+                    x: z.x,
+                    y: z.y - 18,
+                    vy: -45,
+                    text: 'DÉTONATION TOXIQUE !',
+                    color: '#bef264',
+                    life: 0.85,
+                    maxLife: 0.85
+                });
+                triggerExplosion(z.x, z.y, 125, 65 + elapsedTime * 0.4, true);
+            }
+
+            // Largage de plaque militaire / orbe d'XP
+            xpOrbs.push({
+                x: z.x,
+                y: z.y,
+                vx: (Math.random() - 0.5) * 60,
+                vy: (Math.random() - 0.5) * 60,
+                value: z.xp,
+                isBig: z.type === 'brute',
+                pulse: Math.random() * Math.PI * 2
+            });
+        }
+
+        function damagePlayer(amount) {
+            if (player.invulnTimer > 0 || gameState !== 'PLAYING') return;
+            player.hp = Math.max(0, player.hp - amount);
+            player.invulnTimer = 0.42;
+            camera.shake = Math.min(camera.shake + 8, 15);
+            audio.playPlayerHurt();
+
+            floatingTexts.push({
+                x: player.x,
+                y: player.y - 24,
+                vy: -50,
+                text: `-${Math.round(amount)} PV`,
+                color: '#f87171',
+                life: 0.7,
+                maxLife: 0.7
+            });
+
+            if (player.hp <= 0) {
+                triggerGameOver();
+            }
+        }
+
+        function gainXp(amount) {
+            player.xp += amount;
+            audio.playXp();
+
+            while (player.xp >= player.xpToNext) {
+                player.xp -= player.xpToNext;
+                player.level++;
+                player.xpToNext = Math.floor(85 + player.level * 42 + Math.pow(player.level, 1.32) * 16);
+                pendingLevelUps++;
+            }
+
+            if (pendingLevelUps > 0 && gameState === 'PLAYING') {
+                openLevelUpModal();
+            }
+        }
+
+        // =====================================================================
+        // 9. INTERFACE DE RAVITAILLEMENT (3 CARTES & RELANCE)
+        // =====================================================================
+        function rollUpgradeChoices() {
+            const available = UPGRADE_POOL.filter(u => (player.upgrades[u.id] || 0) < u.maxLevel);
+            if (available.length === 0) return [];
+
+            // Tirage pondéré selon la rareté
+            const weights = { common: 55, rare: 32, epic: 13 };
+            const pool = [...available];
+            const chosen = [];
+
+            while (chosen.length < 3 && pool.length > 0) {
+                const totalWeight = pool.reduce((sum, item) => sum + weights[item.rarity], 0);
+                let r = Math.random() * totalWeight;
+                let selectedIndex = 0;
+                for (let i = 0; i < pool.length; i++) {
+                    r -= weights[pool[i].rarity];
+                    if (r <= 0) {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+                chosen.push(pool[selectedIndex]);
+                pool.splice(selectedIndex, 1);
+            }
+            return chosen;
+        }
+
+        function openLevelUpModal() {
+            pendingLevelUps--;
+            rerollsLeft = 1;
+            gameState = 'LEVELUP';
+            mouse.down = false;
+            audio.playLevelUp();
+
+            document.getElementById('modalLevelNum').textContent = player.level;
+            renderUpgradeCards();
+            document.getElementById('levelUpScreen').classList.remove('hidden');
+        }
+
+        function renderUpgradeCards() {
+            const container = document.getElementById('upgradeCardsContainer');
+            container.innerHTML = '';
+
+            const choices = rollUpgradeChoices();
+            const btnReroll = document.getElementById('btnReroll');
+            document.getElementById('rerollCountText').textContent = rerollsLeft;
+            btnReroll.disabled = rerollsLeft <= 0;
+            btnReroll.style.opacity = rerollsLeft > 0 ? '1' : '0.45';
+
+            choices.forEach(upg => {
+                const currentLvl = player.upgrades[upg.id] || 0;
+                const badgeColors = {
+                    common: 'bg-slate-700/80 text-slate-200 border-slate-500/50',
+                    rare: 'bg-sky-500/20 text-sky-300 border-sky-400/50',
+                    epic: 'bg-amber-500/20 text-amber-300 border-amber-400/60'
+                };
+
+                const card = document.createElement('div');
+                card.className = `upgrade-card rarity-${upg.rarity} rounded-2xl border-2 p-5 flex flex-col justify-between`;
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="px-2.5 py-0.5 rounded-md border text-[10px] font-tactical font-bold tracking-widest ${badgeColors[upg.rarity]}">
+                                ${upg.rarityLabel}
+                            </span>
+                            <span class="font-tactical text-xs text-slate-400">
+                                NIV. <strong class="text-white">${currentLvl + 1}</strong> / ${upg.maxLevel}
+                            </span>
+                        </div>
+                        <div class="w-14 h-14 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center justify-center text-3xl mb-3 shadow-inner">
+                            ${upg.icon}
+                        </div>
+                        <h3 class="font-tactical text-xl font-bold text-white mb-2">${upg.name}</h3>
+                        <p class="text-slate-300 text-xs sm:text-sm leading-relaxed">${upg.desc(currentLvl)}</p>
+                    </div>
+                    <div class="mt-5 pt-3 border-t border-slate-700/50 flex items-center justify-between text-xs font-tactical uppercase tracking-wider text-amber-300">
+                        <span>Installer le module</span>
+                        <span>→</span>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => applyUpgrade(upg.id));
+                container.appendChild(card);
+            });
+        }
+
+        function applyUpgrade(id) {
+            const nextLvl = (player.upgrades[id] || 0) + 1;
+            player.upgrades[id] = nextLvl;
+
+            switch (id) {
+                case 'piercing':
+                    player.pierce += 1;
+                    break;
+                case 'multishot':
+                    player.multishot += 1;
+                    break;
+                case 'explosive':
+                    player.explosiveLevel += 1;
+                    break;
+                case 'firerate':
+                    player.fireInterval *= 0.81;
+                    break;
+                case 'magazine':
+                    player.maxAmmo = Math.round(player.maxAmmo * 1.35);
+                    player.ammo = player.maxAmmo;
+                    player.reloading = false;
+                    player.reloadDuration *= 0.74;
+                    break;
+                case 'turret':
+                    if (turrets.length < 4) {
+                        turrets.push({
+                            x: player.x,
+                            y: player.y,
+                            angle: player.angle,
+                            fireCooldown: 0,
+                            muzzleFlash: 0
+                        });
+                    }
+                    // Améliore aussi les tourelles existantes
+                    turrets.forEach(t => { t.boost = nextLvl; });
+                    break;
+                case 'drones':
+                    player.droneCount = nextLvl;
+                    break;
+                case 'grenade':
+                    player.grenadeLevel = nextLvl;
+                    player.grenadeTimer = 0.8; // Lance rapidement une première grenade
+                    break;
+                case 'mobility':
+                    player.speed *= 1.14;
+                    player.dashMaxCooldown *= 0.76;
+                    break;
+                case 'armor':
+                    player.maxHp += 25;
+                    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.45);
+                    player.hpRegen += 0.65;
+                    break;
+                case 'damage':
+                    player.bulletDamage *= 1.24;
+                    player.pickupRadius *= 1.38;
+                    break;
+            }
+
+            // Onde dorée autour du soldat pour célébrer l'amélioration
+            shockwaves.push({
+                x: player.x,
+                y: player.y,
+                radius: 12,
+                maxRadius: 150,
+                alpha: 0.95,
+                color: '#fbbf24'
+            });
+
+            document.getElementById('levelUpScreen').classList.add('hidden');
+            updateActiveUpgradesHud();
+
+            if (pendingLevelUps > 0) {
+                openLevelUpModal();
+            } else {
+                gameState = 'PLAYING';
+                lastFrameTime = performance.now();
+            }
+        }
+
+        // =====================================================================
+        // 10. COLLISIONS OBSTACLES & PHYSIQUE
+        // =====================================================================
+        function resolveCircleObstacles(entity) {
+            const margin = 48 + entity.radius;
+            if (entity.x < margin) entity.x = margin;
+            if (entity.x > WORLD_SIZE - margin) entity.x = WORLD_SIZE - margin;
+            if (entity.y < margin) entity.y = margin;
+            if (entity.y > WORLD_SIZE - margin) entity.y = WORLD_SIZE - margin;
+
+            for (let i = 0; i < obstacles.length; i++) {
+                const obs = obstacles[i];
+                const closestX = Math.max(obs.x, Math.min(entity.x, obs.x + obs.w));
+                const closestY = Math.max(obs.y, Math.min(entity.y, obs.y + obs.h));
+                const dx = entity.x - closestX;
+                const dy = entity.y - closestY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < entity.radius * entity.radius) {
+                    const dist = Math.sqrt(distSq) || 0.001;
+                    const overlap = entity.radius - dist;
+                    entity.x += (dx / dist) * overlap;
+                    entity.y += (dy / dist) * overlap;
+                }
+            }
+        }
+
+        function pointHitsConcrete(x, y) {
+            if (x < 48 || x > WORLD_SIZE - 48 || y < 48 || y > WORLD_SIZE - 48) return true;
+            for (let i = 0; i < obstacles.length; i++) {
+                const obs = obstacles[i];
+                // Les sacs de sable laissent passer les balles du joueur, seul le béton les bloque !
+                if (obs.type === 'concrete') {
+                    if (x >= obs.x && x <= obs.x + obs.w && y >= obs.y && y <= obs.y + obs.h) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // =====================================================================
+        // 11. BOUCLE PRINCIPALE DE SIMULATION (UPDATE)
+        // =====================================================================
+        function update(dt) {
+            elapsedTime += dt;
+
+            // Estompage très lent des taches au sol pour garder l'arène lisible sur les longues parties
+            decalFadeTimer += dt;
+            if (decalFadeTimer >= 8) {
+                decalFadeTimer = 0;
+                decalCtx.fillStyle = 'rgba(17, 24, 39, 0.05)';
+                decalCtx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+            }
+
+            // --- 1. Mise à jour du Soldat ---
+            if (player.invulnTimer > 0) player.invulnTimer -= dt;
+            if (player.dashCooldown > 0) player.dashCooldown = Math.max(0, player.dashCooldown - dt);
+            if (player.fireCooldown > 0) player.fireCooldown = Math.max(0, player.fireCooldown - dt);
+            if (player.muzzleFlash > 0) player.muzzleFlash = Math.max(0, player.muzzleFlash - dt);
+            if (player.recoilOffset > 0) player.recoilOffset = Math.max(0, player.recoilOffset - dt * 32);
+
+            // Régénération passive de santé
+            if (player.hp < player.maxHp && player.hpRegen > 0) {
+                player.hp = Math.min(player.maxHp, player.hp + player.hpRegen * dt);
+            }
+
+            // Rechargement
+            if (player.reloading) {
+                player.reloadTimer -= dt;
+                if (player.reloadTimer <= 0) {
+                    player.reloading = false;
+                    player.ammo = player.maxAmmo;
+                }
+            }
+
+            // Déplacement (Roulade ou Course normale)
+            if (player.dashActiveTimer > 0) {
+                player.dashActiveTimer -= dt;
+                const dashSpeed = player.speed * 2.85;
+                player.x += player.dashDirX * dashSpeed * dt;
+                player.y += player.dashDirY * dashSpeed * dt;
+
+                // Traînée fantôme bleutée pendant la roulade
+                dashGhosts.push({
+                    x: player.x,
+                    y: player.y,
+                    angle: player.angle,
+                    alpha: 0.45
+                });
+            } else {
+                let mx = 0, my = 0;
+                if (keys['KeyW'] || keys['ArrowUp'] || keys['key_z'] || keys['key_w']) my -= 1;
+                if (keys['KeyS'] || keys['ArrowDown'] || keys['key_s']) my += 1;
+                if (keys['KeyA'] || keys['ArrowLeft'] || keys['key_q'] || keys['key_a']) mx -= 1;
+                if (keys['KeyD'] || keys['ArrowRight'] || keys['key_d']) mx += 1;
+
+                if (mx !== 0 || my !== 0) {
+                    const len = Math.hypot(mx, my);
+                    mx /= len;
+                    my /= len;
+                    player.x += mx * player.speed * dt;
+                    player.y += my * player.speed * dt;
+                    player.walkAnim += dt * 11;
+                }
+            }
+
+            resolveCircleObstacles(player);
+
+            // Caméra fluide avec léger décalage vers le viseur
+            const lookAheadX = (mouse.screenX - viewWidth / 2) * 0.14;
+            const lookAheadY = (mouse.screenY - viewHeight / 2) * 0.14;
+            const targetCamX = player.x + lookAheadX;
+            const targetCamY = player.y + lookAheadY;
+            camera.x += (targetCamX - camera.x) * Math.min(1, dt * 8.5);
+            camera.y += (targetCamY - camera.y) * Math.min(1, dt * 8.5);
+            if (camera.shake > 0) camera.shake = Math.max(0, camera.shake - dt * 28);
+
+            // Conversion position souris écran -> monde
+            mouse.worldX = camera.x - viewWidth / 2 + mouse.screenX;
+            mouse.worldY = camera.y - viewHeight / 2 + mouse.screenY;
+            player.angle = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+
+            // Tir continu si clic gauche maintenu
+            if (mouse.down) {
+                fireWeapon();
+            }
+
+            // --- 2. Gadgets Automatiques (Drones, Tourelles, Grenades) ---
+            if (player.droneCount > 0) {
+                player.droneAngle += dt * (2.6 + player.droneCount * 0.35);
+                const orbitRadius = 68;
+                const droneDmg = (18 + player.level * 3) * (1 + (player.upgrades['damage'] || 0) * 0.24);
+
+                for (let d = 0; d < player.droneCount; d++) {
+                    const a = player.droneAngle + (d * Math.PI * 2) / player.droneCount;
+                    const dx = player.x + Math.cos(a) * orbitRadius;
+                    const dy = player.y + Math.sin(a) * orbitRadius;
+
+                    const near = queryNearbyZombies(dx, dy, 26);
+                    for (const z of near) {
+                        if (Math.hypot(z.x - dx, z.y - dy) < z.radius + 13) {
+                            if (!z.droneHitCooldown || z.droneHitCooldown <= 0) {
+                                z.droneHitCooldown = 0.28;
+                                const pushAng = Math.atan2(z.y - player.y, z.x - player.x);
+                                z.vx += Math.cos(pushAng) * 180;
+                                z.vy += Math.sin(pushAng) * 180;
+                                damageZombie(z, droneDmg, '#38bdf8');
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Tourelles automatiques
+            const turretLvl = player.upgrades['turret'] || 0;
+            const turretFireRate = Math.max(0.11, 0.32 * Math.pow(0.82, turretLvl - 1));
+            turrets.forEach(t => {
+                if (t.muzzleFlash > 0) t.muzzleFlash = Math.max(0, t.muzzleFlash - dt);
+                t.fireCooldown -= dt;
+
+                // Trouver le zombie le plus proche dans un rayon de 440px
+                const candidates = queryNearbyZombies(t.x, t.y, 440);
+                let bestTarget = null;
+                let bestDist = 440;
+                for (const z of candidates) {
+                    const d = Math.hypot(z.x - t.x, z.y - t.y);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestTarget = z;
+                    }
+                }
+
+                if (bestTarget) {
+                    t.angle = Math.atan2(bestTarget.y - t.y, bestTarget.x - t.x);
+                    if (t.fireCooldown <= 0) {
+                        t.fireCooldown = turretFireRate;
+                        t.muzzleFlash = 0.04;
+                        audio.playShoot(true);
+                        bullets.push({
+                            x: t.x + Math.cos(t.angle) * 20,
+                            y: t.y + Math.sin(t.angle) * 20,
+                            prevX: t.x,
+                            prevY: t.y,
+                            vx: Math.cos(t.angle) * 920,
+                            vy: Math.sin(t.angle) * 920,
+                            damage: player.bulletDamage * 0.72,
+                            pierceLeft: 0,
+                            explosiveLevel: 0,
+                            hitIds: new Set(),
+                            life: 0.7,
+                            isTurret: true
+                        });
+                    }
+                }
+            });
+
+            // Lance-grenades automatique
+            if (player.grenadeLevel > 0) {
+                player.grenadeTimer -= dt;
+                if (player.grenadeTimer <= 0 && zombies.length > 0) {
+                    player.grenadeTimer = Math.max(1.8, 4.6 - player.grenadeLevel * 0.55);
+                    // Cibler un zombie aléatoire parmi les 25 premiers (souvent au cœur de la foule)
+                    const target = zombies[Math.floor(Math.random() * Math.min(zombies.length, 25))];
+                    if (target && Math.hypot(target.x - player.x, target.y - player.y) < 620) {
+                        grenades.push({
+                            startX: player.x,
+                            startY: player.y,
+                            targetX: target.x,
+                            targetY: target.y,
+                            progress: 0,
+                            duration: 0.65,
+                            damage: (75 + player.grenadeLevel * 32) * (1 + (player.upgrades['damage'] || 0) * 0.24),
+                            radius: 110 + player.grenadeLevel * 14
+                        });
+                    }
+                }
+            }
+
+            // Mise à jour des grenades en vol
+            for (let i = grenades.length - 1; i >= 0; i--) {
+                const g = grenades[i];
+                g.progress += dt / g.duration;
+                if (g.progress >= 1) {
+                    triggerExplosion(g.targetX, g.targetY, g.radius, g.damage, false);
+                    grenades.splice(i, 1);
+                }
+            }
+
+            // --- 3. Apparition Exponentielle des Zombies ---
+            spawnTimer -= dt;
+            if (spawnTimer <= 0) {
+                // La cadence de spawn accélère fortement avec le temps et les éliminations
+                const intensity = 1 + (elapsedTime / 28) + (totalKills / 120);
+                spawnTimer = Math.max(0.18, 1.35 / Math.pow(intensity, 0.85));
+
+                // Taille de la vague simultanée croissante
+                const batchSize = Math.min(12, 1 + Math.floor(elapsedTime / 22) + Math.floor(totalKills / 95));
+                for (let b = 0; b < batchSize; b++) {
+                    spawnZombie();
+                }
+            }
+
+            // --- 4. Grille Spatiale & Mise à jour des Zombies ---
+            rebuildSpatialGrid();
+
+            for (let i = zombies.length - 1; i >= 0; i--) {
+                const z = zombies[i];
+                if (z.hp <= 0) {
+                    zombies.splice(i, 1);
+                    continue;
+                }
+
+                if (z.hitFlash > 0) z.hitFlash -= dt;
+                if (z.attackCooldown > 0) z.attackCooldown -= dt;
+                if (z.droneHitCooldown > 0) z.droneHitCooldown -= dt;
+                z.animPhase += dt * (z.type === 'runner' ? 14 : 7);
+
+                // Direction vers le soldat
+                const dx = player.x - z.x;
+                const dy = player.y - z.y;
+                const distToPlayer = Math.hypot(dx, dy) || 0.001;
+                const dirX = dx / distToPlayer;
+                const dirY = dy / distToPlayer;
+
+                // Séparation douce avec les zombies voisins (évite l'empilement total)
+                let sepX = 0, sepY = 0;
+                const neighbors = queryNearbyZombies(z.x, z.y, z.radius * 2.2);
+                for (let n = 0; n < neighbors.length; n++) {
+                    const other = neighbors[n];
+                    if (other === z) continue;
+                    const odx = z.x - other.x;
+                    const ody = z.y - other.y;
+                    const minDist = z.radius + other.radius;
+                    const dSq = odx * odx + ody * ody;
+                    if (dSq > 0 && dSq < minDist * minDist) {
+                        const d = Math.sqrt(dSq);
+                        const push = (minDist - d) / minDist;
+                        sepX += (odx / d) * push * 140;
+                        sepY += (ody / d) * push * 140;
+                    }
+                }
+
+                // Amortissement du recul (vx, vy)
+                z.vx *= Math.pow(0.04, dt);
+                z.vy *= Math.pow(0.04, dt);
+
+                z.x += (dirX * z.speed + sepX + z.vx) * dt;
+                z.y += (dirY * z.speed + sepY + z.vy) * dt;
+
+                resolveCircleObstacles(z);
+
+                // Attaque au corps-à-corps contre le joueur
+                if (distToPlayer < z.radius + player.radius + 4 && z.attackCooldown <= 0) {
+                    z.attackCooldown = 0.85;
+                    damagePlayer(z.damage);
+                }
+            }
+
+            // --- 5. Projectiles & Collisions ---
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.prevX = b.x;
+                b.prevY = b.y;
+                b.x += b.vx * dt;
+                b.y += b.vy * dt;
+                b.life -= dt;
+
+                if (b.life <= 0 || pointHitsConcrete(b.x, b.y)) {
+                    // Étincelles d'impact sur le béton
+                    for (let p = 0; p < 4; p++) {
+                        const a = Math.random() * Math.PI * 2;
+                        particles.push({
+                            x: b.x, y: b.y,
+                            vx: Math.cos(a) * 120,
+                            vy: Math.sin(a) * 120,
+                            size: 2,
+                            color: '#fde047',
+                            life: 0.15,
+                            maxLife: 0.15
+                        });
+                    }
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                // Détection de collision avec les zombies via la grille spatiale
+                const candidates = queryNearbyZombies(b.x, b.y, 40);
+                let destroyed = false;
+
+                for (let c = 0; c < candidates.length; c++) {
+                    const z = candidates[c];
+                    if (z.hp <= 0 || b.hitIds.has(z.id)) continue;
+
+                    const dist = Math.hypot(z.x - b.x, z.y - b.y);
+                    if (dist <= z.radius + 6) {
+                        b.hitIds.add(z.id);
+                        audio.playHit();
+
+                        // Recul de l'ennemi
+                        const bAng = Math.atan2(b.vy, b.vx);
+                        const knock = z.type === 'brute' ? 38 : 115;
+                        z.vx += Math.cos(bAng) * knock;
+                        z.vy += Math.sin(bAng) * knock;
+
+                        damageZombie(z, b.damage, b.isTurret ? '#7dd3fc' : '#fef08a');
+
+                        // Munitions explosives
+                        if (b.explosiveLevel > 0) {
+                            triggerExplosion(
+                                b.x, b.y,
+                                56 + b.explosiveLevel * 16,
+                                b.damage * (0.45 + b.explosiveLevel * 0.18),
+                                false
+                            );
+                        }
+
+                        if (b.pierceLeft > 0) {
+                            b.pierceLeft--;
+                            b.damage *= 0.88; // Légère perte d'énergie après perforation
+                        } else {
+                            destroyed = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (destroyed) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // --- 6. Orbes d'XP & Magnétisme ---
+            for (let i = xpOrbs.length - 1; i >= 0; i--) {
+                const orb = xpOrbs[i];
+                orb.pulse += dt * 6;
+                orb.vx *= Math.pow(0.05, dt);
+                orb.vy *= Math.pow(0.05, dt);
+
+                const dx = player.x - orb.x;
+                const dy = player.y - orb.y;
+                const dist = Math.hypot(dx, dy) || 0.001;
+
+                if (dist < player.pickupRadius) {
+                    const pullSpeed = 460 + (1 - dist / player.pickupRadius) * 380;
+                    orb.x += (dx / dist) * pullSpeed * dt;
+                    orb.y += (dy / dist) * pullSpeed * dt;
+                } else {
+                    orb.x += orb.vx * dt;
+                    orb.y += orb.vy * dt;
+                }
+
+                if (dist < player.radius + 12) {
+                    gainXp(orb.value);
+                    xpOrbs.splice(i, 1);
+                }
+            }
+
+            // --- 7. Particules, Douilles, Ondes & Textes Flottants ---
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vx *= Math.pow(0.1, dt);
+                p.vy *= Math.pow(0.1, dt);
+                p.life -= dt;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            for (let i = casings.length - 1; i >= 0; i--) {
+                const c = casings[i];
+                c.life -= dt;
+                if (c.z > 0 || c.vz > 0) {
+                    c.x += c.vx * dt;
+                    c.y += c.vy * dt;
+                    c.z += c.vz * dt;
+                    c.vz -= 480 * dt;
+                    c.rot += c.vrot * dt;
+                    if (c.z <= 0) {
+                        c.z = 0;
+                        c.vz = Math.abs(c.vz) * 0.35;
+                        c.vx *= 0.45;
+                        c.vy *= 0.45;
+                        if (c.vz < 18) c.vz = 0;
+                    }
+                }
+                if (c.life <= 0) casings.splice(i, 1);
+            }
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.radius += (sw.maxRadius - sw.radius) * Math.min(1, dt * 11);
+                sw.alpha -= dt * 2.1;
+                if (sw.alpha <= 0) shockwaves.splice(i, 1);
+            }
+
+            for (let i = dashGhosts.length - 1; i >= 0; i--) {
+                dashGhosts[i].alpha -= dt * 2.4;
+                if (dashGhosts[i].alpha <= 0) dashGhosts.splice(i, 1);
+            }
+
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y += ft.vy * dt;
+                ft.life -= dt;
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+        }
+
+        // =====================================================================
+        // 12. RENDU GRAPHIQUE SUR CANVAS 2D
+        // =====================================================================
+        function render() {
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+            ctx.save();
+
+            // Tremblement de caméra
+            const shakeX = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake * 2 : 0;
+            const shakeY = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake * 2 : 0;
+
+            const camLeft = camera.x - viewWidth / 2 + shakeX;
+            const camTop = camera.y - viewHeight / 2 + shakeY;
+            ctx.translate(-camLeft, -camTop);
+
+            // 1. Sol et décals persistants (uniquement la portion visible à l'écran)
+            const sx = Math.max(0, Math.floor(camLeft));
+            const sy = Math.max(0, Math.floor(camTop));
+            const sw = Math.min(WORLD_SIZE - sx, Math.ceil(viewWidth + 40));
+            const sh = Math.min(WORLD_SIZE - sy, Math.ceil(viewHeight + 40));
+            if (sw > 0 && sh > 0) {
+                ctx.drawImage(decalCanvas, sx, sy, sw, sh, sx, sy, sw, sh);
+            }
+
+            // 2. Murs d'enceinte du bastion
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, WORLD_SIZE, 48);
+            ctx.fillRect(0, WORLD_SIZE - 48, WORLD_SIZE, 48);
+            ctx.fillRect(0, 0, 48, WORLD_SIZE);
+            ctx.fillRect(WORLD_SIZE - 48, 0, 48, WORLD_SIZE);
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(48, 48, WORLD_SIZE - 96, WORLD_SIZE - 96);
+
+            // 3. Obstacles (Bunkers sacs de sable & Blocs béton armé)
+            for (let i = 0; i < obstacles.length; i++) {
+                const obs = obstacles[i];
+                // Ombre portée
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.fillRect(obs.x + 6, obs.y + 8, obs.w, obs.h);
+
+                if (obs.type === 'sandbag') {
+                    ctx.fillStyle = '#927955';
+                    ctx.beginPath();
+                    ctx.roundRect(obs.x, obs.y, obs.w, obs.h, 8);
+                    ctx.fill();
+                    ctx.strokeStyle = '#5c4b32';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Lignes de séparation entre les sacs
+                    ctx.strokeStyle = 'rgba(41, 32, 19, 0.5)';
+                    ctx.beginPath();
+                    if (obs.w > obs.h) {
+                        for (let bx = obs.x + 28; bx < obs.x + obs.w - 10; bx += 28) {
+                            ctx.moveTo(bx, obs.y + 2);
+                            ctx.lineTo(bx, obs.y + obs.h - 2);
+                        }
+                    } else {
+                        for (let by = obs.y + 28; by < obs.y + obs.h - 10; by += 28) {
+                            ctx.moveTo(obs.x + 2, by);
+                            ctx.lineTo(obs.x + obs.w - 2, by);
+                        }
+                    }
+                    ctx.stroke();
+                } else {
+                    // Béton armé
+                    ctx.fillStyle = '#334155';
+                    ctx.beginPath();
+                    ctx.roundRect(obs.x, obs.y, obs.w, obs.h, 6);
+                    ctx.fill();
+                    ctx.strokeStyle = '#64748b';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+
+                    // Bordure intérieure métallique
+                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.6)';
+                    ctx.strokeRect(obs.x + 8, obs.y + 8, obs.w - 16, obs.h - 16);
+                }
+            }
+
+            // 4. Douilles au sol
+            for (let i = 0; i < casings.length; i++) {
+                const c = casings[i];
+                ctx.save();
+                ctx.translate(c.x, c.y - c.z);
+                ctx.rotate(c.rot);
+                ctx.globalAlpha = Math.min(1, c.life);
+                ctx.fillStyle = '#fbbf24';
+                ctx.fillRect(-3, -1.2, 6, 2.4);
+                ctx.restore();
+            }
+
+            // 5. Orbes d'XP / Plaques militaires
+            for (let i = 0; i < xpOrbs.length; i++) {
+                const orb = xpOrbs[i];
+                const r = (orb.isBig ? 7 : 4.5) + Math.sin(orb.pulse) * 1.1;
+                ctx.save();
+                ctx.fillStyle = orb.isBig ? 'rgba(245, 158, 11, 0.25)' : 'rgba(56, 189, 248, 0.22)';
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, r * 2.1, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = orb.isBig ? '#fbbf24' : '#38bdf8';
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 6. Ondes de choc
+            for (let i = 0; i < shockwaves.length; i++) {
+                const sw = shockwaves[i];
+                ctx.save();
+                ctx.strokeStyle = sw.color;
+                ctx.globalAlpha = Math.max(0, sw.alpha);
+                ctx.lineWidth = 3.5;
+                ctx.beginPath();
+                ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 7. Tourelles automatiques
+            turrets.forEach(t => {
+                ctx.save();
+                ctx.translate(t.x, t.y);
+
+                // Trépied
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 4;
+                for (let leg = 0; leg < 3; leg++) {
+                    const la = (leg * Math.PI * 2) / 3 + 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(Math.cos(la) * 18, Math.sin(la) * 18);
+                    ctx.stroke();
+                }
+
+                // Base circulaire
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.arc(0, 0, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Tourelle rotative
+                ctx.rotate(t.angle);
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, -5, 22, 10);
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(14, -3.5, 10, 2.5);
+                ctx.fillRect(14, 1, 10, 2.5);
+
+                if (t.muzzleFlash > 0) {
+                    ctx.fillStyle = '#fef08a';
+                    ctx.beginPath();
+                    ctx.arc(27, 0, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // 8. Zombies (rendus avec animations des bras et silhouettes lisibles)
+            for (let i = 0; i < zombies.length; i++) {
+                const z = zombies[i];
+                // Culling hors-écran rapide
+                if (z.x < camLeft - 60 || z.x > camLeft + viewWidth + 60 ||
+                    z.y < camTop - 60 || z.y > camTop + viewHeight + 60) {
+                    continue;
+                }
+
+                const angleToPlayer = Math.atan2(player.y - z.y, player.x - z.x);
+                ctx.save();
+                ctx.translate(z.x, z.y);
+
+                // Aura pulsante pour le Toxique
+                if (z.type === 'toxic') {
+                    const glowR = z.radius + 7 + Math.sin(z.animPhase * 1.3) * 3;
+                    ctx.fillStyle = 'rgba(163, 230, 53, 0.22)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, glowR, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Ombre au sol
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+                ctx.beginPath();
+                ctx.arc(3, 5, z.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.save();
+                ctx.rotate(angleToPlayer);
+
+                const armSwing = Math.sin(z.animPhase) * 3.5;
+                const bodyColor = z.hitFlash > 0 ? '#ffffff' : z.color;
+                const headColor = z.hitFlash > 0 ? '#ffffff' : z.headColor;
+
+                // Bras tendus vers l'avant
+                ctx.fillStyle = bodyColor;
+                ctx.beginPath();
+                ctx.roundRect(2, -z.radius * 0.85 + armSwing, z.radius * 1.15, z.radius * 0.42, 4);
+                ctx.roundRect(2, z.radius * 0.43 - armSwing, z.radius * 1.15, z.radius * 0.42, 4);
+                ctx.fill();
+
+                // Torse / Épaules
+                ctx.fillStyle = bodyColor;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, z.radius * 0.78, z.radius * 1.05, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Épaulières blindées pour le Colosse
+                if (z.type === 'brute' && z.hitFlash <= 0) {
+                    ctx.fillStyle = '#3b0764';
+                    ctx.beginPath();
+                    ctx.arc(-2, -z.radius * 0.82, 8, 0, Math.PI * 2);
+                    ctx.arc(-2, z.radius * 0.82, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Tête
+                ctx.fillStyle = headColor;
+                ctx.beginPath();
+                ctx.arc(2, 0, z.radius * 0.56, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Yeux brillants
+                if (z.hitFlash <= 0) {
+                    ctx.fillStyle = z.type === 'brute' ? '#f472b6' : (z.type === 'toxic' ? '#ffffff' : '#fef08a');
+                    ctx.fillRect(z.radius * 0.35, -3.5, 2.5, 2);
+                    ctx.fillRect(z.radius * 0.35, 1.5, 2.5, 2);
+                }
+
+                ctx.restore();
+
+                // Barre de vie visible au-dessus des Colosses (et des ennemis blessés)
+                if (z.type === 'brute' && z.hp < z.maxHp) {
+                    const bw = 42;
+                    const bh = 5;
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+                    ctx.fillRect(-bw / 2, -z.radius - 14, bw, bh);
+                    ctx.fillStyle = '#c084fc';
+                    ctx.fillRect(-bw / 2, -z.radius - 14, bw * Math.max(0, z.hp / z.maxHp), bh);
+                }
+
+                ctx.restore();
+            }
+
+            // 9. Traînées fantômes de roulade
+            for (let i = 0; i < dashGhosts.length; i++) {
+                const g = dashGhosts[i];
+                ctx.save();
+                ctx.translate(g.x, g.y);
+                ctx.globalAlpha = g.alpha;
+                ctx.fillStyle = '#22d3ee';
+                ctx.beginPath();
+                ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 10. Soldat (Joueur)
+            if (player.hp > 0) {
+                ctx.save();
+                ctx.translate(player.x, player.y);
+
+                // Clignotement léger si invulnérable après coup
+                if (player.invulnTimer > 0 && player.dashActiveTimer <= 0 && Math.floor(elapsedTime * 24) % 2 === 0) {
+                    ctx.globalAlpha = 0.55;
+                }
+
+                // Ombre au sol
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.beginPath();
+                ctx.arc(3, 5, player.radius + 1, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.rotate(player.angle);
+
+                // Bottes animées lors de la marche
+                const step = Math.sin(player.walkAnim) * 5;
+                ctx.fillStyle = '#0f172a';
+                ctx.beginPath();
+                ctx.roundRect(-6 + step, -11, 10, 5, 2);
+                ctx.roundRect(-6 - step, 6, 10, 5, 2);
+                ctx.fill();
+
+                // Épaules & Gilet tactique militaire
+                ctx.fillStyle = '#334155';
+                ctx.beginPath();
+                ctx.ellipse(-1, 0, 12, 16, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Plaques d'épaule olive tactique
+                ctx.fillStyle = '#3f6212';
+                ctx.beginPath();
+                ctx.arc(-1, -13, 5.5, 0, Math.PI * 2);
+                ctx.arc(-1, 13, 5.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Fusil d'assaut avec recul animé
+                const gunX = 4 - player.recoilOffset;
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(gunX, -3, 24, 6);
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(gunX + 18, -2, 8, 4);
+
+                // Bras tenant l'arme
+                ctx.fillStyle = '#475569';
+                ctx.beginPath();
+                ctx.arc(gunX + 8, 5, 4, 0, Math.PI * 2);
+                ctx.arc(gunX + 15, -4, 3.8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Casque militaire + visière tactique
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#94a3b8';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // Visière cyan lumineuse
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.arc(4, 0, 6.5, -0.65, 0.65);
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#38bdf8';
+                ctx.stroke();
+
+                // Flash lumineux au bout du canon
+                if (player.muzzleFlash > 0) {
+                    ctx.fillStyle = 'rgba(254, 240, 138, 0.85)';
+                    ctx.beginPath();
+                    ctx.moveTo(gunX + 26, 0);
+                    ctx.lineTo(gunX + 46, -11);
+                    ctx.lineTo(gunX + 42, 0);
+                    ctx.lineTo(gunX + 46, 11);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+
+            // 11. Drones Orbitaux
+            if (player.droneCount > 0) {
+                const orbitRadius = 68;
+                for (let d = 0; d < player.droneCount; d++) {
+                    const a = player.droneAngle + (d * Math.PI * 2) / player.droneCount;
+                    const dx = player.x + Math.cos(a) * orbitRadius;
+                    const dy = player.y + Math.sin(a) * orbitRadius;
+
+                    ctx.save();
+                    ctx.translate(dx, dy);
+                    ctx.rotate(a * 2.5);
+
+                    // Halo électrique
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Corps triangulaire du drone
+                    ctx.fillStyle = '#0ea5e9';
+                    ctx.beginPath();
+                    ctx.moveTo(10, 0);
+                    ctx.lineTo(-7, -7);
+                    ctx.lineTo(-4, 0);
+                    ctx.lineTo(-7, 7);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.strokeStyle = '#e0f2fe';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+            }
+
+            // 12. Balles & Traînées lumineuses
+            for (let i = 0; i < bullets.length; i++) {
+                const b = bullets[i];
+                ctx.save();
+                ctx.strokeStyle = b.isTurret ? '#38bdf8' : (b.explosiveLevel > 0 ? '#fb923c' : '#fde047');
+                ctx.lineWidth = b.explosiveLevel > 0 ? 4 : 3;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(b.prevX, b.prevY);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 13. Grenades en cloche
+            for (let i = 0; i < grenades.length; i++) {
+                const g = grenades[i];
+                const gx = g.startX + (g.targetX - g.startX) * g.progress;
+                const gy = g.startY + (g.targetY - g.startY) * g.progress;
+                const arcHeight = Math.sin(g.progress * Math.PI) * 55;
+
+                // Cercle de ciblage au sol
+                ctx.save();
+                ctx.strokeStyle = 'rgba(249, 115, 22, 0.45)';
+                ctx.setLineDash([6, 6]);
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(g.targetX, g.targetY, g.radius * g.progress, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+
+                // Grenade
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath();
+                ctx.arc(gx, gy - arcHeight, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // 14. Particules d'effets
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // 15. Nombres de dégâts flottants
+            ctx.font = 'bold 14px "Chakra Petch", sans-serif';
+            ctx.textAlign = 'center';
+            for (let i = 0; i < floatingTexts.length; i++) {
+                const ft = floatingTexts[i];
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, ft.life / ft.maxLife);
+                ctx.fillStyle = '#090d16';
+                ctx.fillText(ft.text, ft.x + 1, ft.y + 1);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            }
+
+            ctx.restore();
+
+            // 16. Vignette atmosphérique & Réticule tactique autour du curseur souris
+            renderAtmosphereAndCrosshair();
+        }
+
+        function renderAtmosphereAndCrosshair() {
+            // Vignette sombre sur les bords de l'écran pour l'ambiance
+            const grad = ctx.createRadialGradient(
+                viewWidth / 2, viewHeight / 2, Math.min(viewWidth, viewHeight) * 0.34,
+                viewWidth / 2, viewHeight / 2, Math.max(viewWidth, viewHeight) * 0.72
+            );
+            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            grad.addColorStop(1, 'rgba(2, 6, 23, 0.62)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+            if (gameState !== 'PLAYING') return;
+
+            // Réticule tactique personnalisé avec jauge de munitions / rechargement intégrée
+            const cx = mouse.screenX;
+            const cy = mouse.screenY;
+
+            ctx.save();
+            ctx.translate(cx, cy);
+
+            // Arc de munitions ou de rechargement autour du viseur
+            const arcRadius = 22;
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+            ctx.beginPath();
+            ctx.arc(0, 0, arcRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            if (player.reloading) {
+                const progress = 1 - (player.reloadTimer / player.reloadDuration);
+                ctx.strokeStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.arc(0, 0, arcRadius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+                ctx.stroke();
+            } else {
+                const ammoRatio = player.ammo / player.maxAmmo;
+                ctx.strokeStyle = ammoRatio > 0.25 ? '#38bdf8' : '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(0, 0, arcRadius, -Math.PI / 2, -Math.PI / 2 + ammoRatio * Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Croix de visée nette
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 2;
+            const gap = 6 + player.recoilOffset * 0.8;
+            const len = 12;
+
+            ctx.beginPath();
+            ctx.moveTo(-gap - len, 0); ctx.lineTo(-gap, 0);
+            ctx.moveTo(gap, 0); ctx.lineTo(gap + len, 0);
+            ctx.moveTo(0, -gap - len); ctx.lineTo(0, -gap);
+            ctx.moveTo(0, gap); ctx.lineTo(0, gap + len);
+            ctx.stroke();
+
+            // Point central
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // =====================================================================
+        // 13. MISE À JOUR DU HUD & ÉCRANS D'INTERFACE
+        // =====================================================================
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60).toString().padStart(2, '0');
+            const s = Math.floor(sec % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function updateHud() {
+            // Santé
+            const hpPct = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+            document.getElementById('hudHpBar').style.width = `${hpPct}%`;
+            document.getElementById('hudHpText').textContent = `${Math.ceil(player.hp)} / ${Math.round(player.maxHp)}`;
+
+            // XP & Niveau
+            const xpPct = Math.max(0, Math.min(100, (player.xp / player.xpToNext) * 100));
+            document.getElementById('hudXpBar').style.width = `${xpPct}%`;
+            document.getElementById('hudLevel').textContent = player.level;
+            document.getElementById('hudXpText').textContent = `${Math.floor(player.xp)} / ${player.xpToNext} XP`;
+
+            // Chrono, Menace & Compteur actifs
+            document.getElementById('hudTimer').textContent = formatTime(elapsedTime);
+            document.getElementById('hudKills').textContent = totalKills;
+            document.getElementById('hudActiveZombies').textContent = zombies.length;
+
+            const threat = getThreatInfo(elapsedTime, totalKills);
+            const threatEl = document.getElementById('hudThreatLabel');
+            threatEl.textContent = threat.label;
+            threatEl.className = `font-tactical text-xs sm:text-sm font-bold uppercase tracking-wide ${threat.color} ${threat.danger ? 'animate-threat' : ''}`;
+
+            // Munitions
+            document.getElementById('hudAmmoCurrent').textContent = player.ammo;
+            document.getElementById('hudAmmoMax').textContent = player.maxAmmo;
+            const reloadBadge = document.getElementById('hudReloadBadge');
+            if (player.reloading) {
+                reloadBadge.classList.remove('hidden');
+            } else {
+                reloadBadge.classList.add('hidden');
+            }
+
+            // Roulade Tactique
+            const dashReadyPct = player.dashCooldown <= 0
+                ? 100
+                : Math.max(0, (1 - player.dashCooldown / player.dashMaxCooldown) * 100);
+            document.getElementById('hudDashBar').style.width = `${dashReadyPct}%`;
+            const dashStatus = document.getElementById('hudDashStatus');
+            if (dashReadyPct >= 100) {
+                dashStatus.textContent = 'PRÊTE';
+                dashStatus.className = 'font-tactical text-[11px] font-bold text-cyan-300 mt-1';
+            } else {
+                dashStatus.textContent = `${player.dashCooldown.toFixed(1)}s`;
+                dashStatus.className = 'font-tactical text-[11px] font-bold text-slate-400 mt-1';
+            }
+        }
+
+        function updateActiveUpgradesHud() {
+            const container = document.getElementById('hudActiveUpgrades');
+            container.innerHTML = '';
+            Object.entries(player.upgrades).forEach(([id, lvl]) => {
+                const def = UPGRADE_POOL.find(u => u.id === id);
+                if (!def) return;
+                const badge = document.createElement('div');
+                badge.className = 'tactical-panel rounded-lg px-2 py-1 flex items-center gap-1 text-xs border-slate-700/90';
+                badge.title = `${def.name} (Niveau ${lvl})`;
+                badge.innerHTML = `<span>${def.icon}</span><span class="font-tactical font-bold text-amber-300">x${lvl}</span>`;
+                container.appendChild(badge);
+            });
+        }
+
+        function setPause(paused) {
+            if (paused && gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                mouse.down = false;
+                document.getElementById('pauseScreen').classList.remove('hidden');
+            } else if (!paused && gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                lastFrameTime = performance.now();
+                document.getElementById('pauseScreen').classList.add('hidden');
+            }
+        }
+
+        function triggerGameOver() {
+            gameState = 'GAMEOVER';
+            mouse.down = false;
+
+            document.getElementById('statTime').textContent = formatTime(elapsedTime);
+            document.getElementById('statKills').textContent = totalKills;
+            document.getElementById('statLevel').textContent = player.level;
+            document.getElementById('statDamage').textContent = Math.round(totalDamageDealt).toLocaleString('fr-FR');
+
+            const list = document.getElementById('statUpgradesList');
+            list.innerHTML = '';
+            const entries = Object.entries(player.upgrades);
+            if (entries.length === 0) {
+                list.innerHTML = `<span class="text-slate-500 text-xs italic">Aucune amélioration déployée lors de cette sortie.</span>`;
+            } else {
+                entries.forEach(([id, lvl]) => {
+                    const def = UPGRADE_POOL.find(u => u.id === id);
+                    if (!def) return;
+                    const chip = document.createElement('div');
+                    chip.className = 'px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs flex items-center gap-2';
+                    chip.innerHTML = `<span>${def.icon}</span><span class="font-medium text-slate-200">${def.name}</span><span class="font-tactical font-bold text-amber-400">Niv.${lvl}</span>`;
+                    list.appendChild(chip);
+                });
+            }
+
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function startMission() {
+            audio.init();
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('pauseScreen').classList.add('hidden');
+            document.getElementById('levelUpScreen').classList.add('hidden');
+            document.getElementById('hudContainer').classList.remove('hidden');
+            document.getElementById('hudActiveUpgrades').innerHTML = '';
+
+            resetGame();
+            gameState = 'PLAYING';
+            lastFrameTime = performance.now();
+        }
+
+        // =====================================================================
+        // 14. ÉVÉNEMENTS BOUTONS UI & BOUCLE ANIMATION
+        // =====================================================================
+        document.getElementById('btnDeploy').addEventListener('click', startMission);
+        document.getElementById('btnReplay').addEventListener('click', startMission);
+        document.getElementById('btnRestartFromPause').addEventListener('click', startMission);
+        document.getElementById('btnResume').addEventListener('click', () => setPause(false));
+        document.getElementById('btnPause').addEventListener('click', () => setPause(gameState === 'PLAYING'));
+
+        document.getElementById('btnToggleAudio').addEventListener('click', () => {
+            audio.init();
+            const isMuted = audio.toggleMute();
+            document.getElementById('iconAudioOn').classList.toggle('hidden', isMuted);
+            document.getElementById('iconAudioOff').classList.toggle('hidden', !isMuted);
+        });
+
+        document.getElementById('btnReroll').addEventListener('click', () => {
+            if (rerollsLeft > 0) {
+                rerollsLeft--;
+                audio.playReload();
+                renderUpgradeCards();
+            }
+        });
+
+        function gameLoop(now) {
+            const dt = Math.min((now - lastFrameTime) / 1000, 0.05); // Cap dt à 50ms pour éviter les sauts
+            lastFrameTime = now;
+
+            if (gameState === 'PLAYING') {
+                update(dt);
+                updateHud();
+            } else if (gameState === 'MENU') {
+                // Animation de caméra douce en arrière-plan sur l'écran d'accueil
+                camera.x = WORLD_SIZE / 2 + Math.cos(now * 0.0003) * 180;
+                camera.y = WORLD_SIZE / 2 + Math.sin(now * 0.0003) * 180;
+            }
+
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialisation de l'aperçu d'arrière-plan au chargement
+        generateArena();
+        requestAnimationFrame((now) => {
+            lastFrameTime = now;
+            gameLoop(now);
+        });
+    })();
+    </script>
+</body>
+</html>
